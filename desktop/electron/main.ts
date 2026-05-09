@@ -3001,23 +3001,31 @@ interface CronjobListResponsePayload {
 interface CronjobCreatePayload {
   workspace_id: string;
   initiated_by: string;
+  session_id?: string;
   name?: string;
   cron: string;
   description: string;
   instruction?: string;
   enabled?: boolean;
   delivery: CronjobDeliveryPayload;
+  model?: string;
   metadata?: Record<string, unknown>;
 }
 
 interface CronjobUpdatePayload {
+  session_id?: string;
   name?: string;
   cron?: string;
   description?: string;
   instruction?: string;
   enabled?: boolean;
   delivery?: CronjobDeliveryPayload;
+  model?: string;
   metadata?: Record<string, unknown>;
+}
+
+interface CronjobRunNowPayload {
+  model?: string;
 }
 
 interface IntegrationCatalogProviderPayload {
@@ -10127,6 +10135,7 @@ async function listCronjobs(
 async function runCronjobNow(
   workspaceId: string,
   jobId: string,
+  payload?: CronjobRunNowPayload,
 ): Promise<CronjobRunResponsePayload> {
   return requestWorkspaceRuntimeJson<CronjobRunResponsePayload>(workspaceId, {
     method: "POST",
@@ -10134,6 +10143,7 @@ async function runCronjobNow(
     params: {
       workspace_id: workspaceId,
     },
+    payload,
   });
 }
 
@@ -22271,8 +22281,8 @@ app.whenReady().then(async () => {
   handleTrustedIpc(
     "workspace:runCronjobNow",
     ["main"],
-    async (_event, workspaceId: string, jobId: string) =>
-      runCronjobNow(workspaceId, jobId),
+    async (_event, workspaceId: string, jobId: string, payload?: CronjobRunNowPayload) =>
+      runCronjobNow(workspaceId, jobId, payload),
   );
   handleTrustedIpc(
     "workspace:updateCronjob",

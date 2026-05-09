@@ -4434,6 +4434,7 @@ function AppShellContent() {
           <div className="min-h-0 flex-1 overflow-hidden">
             <AutomationsPane
               workspaceId={selectedWorkspaceId}
+              composerModel={currentComposerSelectedModel(runtimeConfig)}
               emptyWorkspaceMessage="Choose a workspace from the top bar to view and manage automations."
               onOpenRunSession={(sessionId) =>
                 handleOpenAutomationRunSession(sessionId, selectedWorkspaceId)
