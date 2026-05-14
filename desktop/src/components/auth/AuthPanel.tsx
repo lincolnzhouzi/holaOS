@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Loader2,
   LogOut,
+  MoreHorizontal,
   Plug,
   Plus,
   RefreshCw,
@@ -40,6 +41,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { CodexOAuthModal } from "@/components/auth/CodexOAuthModal";
 import { useDesktopAuthSession, type AuthSession } from "@/lib/auth/authClient";
 import { holabossLogoUrl } from "@/lib/assetPaths";
 import { useDesktopBilling } from "@/lib/billing/useDesktopBilling";
@@ -529,6 +531,59 @@ function parseRuntimeConfigDocument(rawText: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+interface CodexConnectionMeta {
+  expiresInMs: number | null;
+  expiresAtIso: string | null;
+  lastRefreshAtIso: string | null;
+}
+
+function codexConnectionMeta(
+  document: Record<string, unknown>,
+): CodexConnectionMeta {
+  const providers = asRecord(document.providers);
+  const provider = asRecord(providers.openai_codex);
+  const options = asRecord(provider.options);
+  const expiresAtIso = firstNonEmptyString(
+    options.access_token_expires_at as string | undefined,
+    options.accessTokenExpiresAt as string | undefined,
+  );
+  const lastRefreshAtIso = firstNonEmptyString(
+    options.last_refresh_at as string | undefined,
+    options.lastRefreshAt as string | undefined,
+  );
+  const expiresAtMs = expiresAtIso ? Date.parse(expiresAtIso) : NaN;
+  return {
+    expiresInMs: Number.isFinite(expiresAtMs) ? expiresAtMs - Date.now() : null,
+    expiresAtIso: expiresAtIso || null,
+    lastRefreshAtIso: lastRefreshAtIso || null,
+  };
+}
+
+function formatRelativeFuture(ms: number | null): string {
+  if (ms === null || !Number.isFinite(ms)) return "soon";
+  if (ms <= 0) return "now";
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return "<1 min";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  return `${days}d`;
+}
+
+function formatRelativePast(iso: string | null): string {
+  if (!iso) return "—";
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms) || ms < 0) return "just now";
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
 }
 
 function uniqueValues(values: string[]): string[] {
@@ -1641,6 +1696,7 @@ export function AuthPanel({ view = "full" }: AuthPanelProps) {
     useState(false);
   const [connectingProviderId, setConnectingProviderId] =
     useState<KnownProviderId | null>(null);
+  const [codexOAuthModalOpen, setCodexOAuthModalOpen] = useState(false);
   const [disconnectingProviderId, setDisconnectingProviderId] =
     useState<KnownProviderId | null>(null);
   // Per-provider validation state for the "Validate" affordance.
@@ -2951,7 +3007,7 @@ export function AuthPanel({ view = "full" }: AuthPanelProps) {
     );
   }
 
-  async function handleConnectCodexProvider(providerId: KnownProviderId) {
+  function handleConnectCodexProvider(providerId: KnownProviderId) {
     if (!window.electronAPI || providerId !== "openai_codex") {
       return;
     }
@@ -2962,15 +3018,16 @@ export function AuthPanel({ view = "full" }: AuthPanelProps) {
       setAuthMessage("");
       return;
     }
-
     setConnectingProviderId(providerId);
-    setProviderSaveStatus("saving");
     setAuthError("");
-    setAuthMessage(
-      "OpenAI Codex sign-in is starting in your browser. The device code will be copied to your clipboard.",
-    );
+    setAuthMessage("");
+    setCodexOAuthModalOpen(true);
+  }
+
+  async function handleCodexOAuthSuccess(nextConfig: RuntimeConfigPayload) {
+    if (!window.electronAPI) return;
+    setProviderSaveStatus("saving");
     try {
-      const nextConfig = await window.electronAPI.runtime.connectCodexOAuth();
       const nextDocumentText =
         await window.electronAPI.runtime.getConfigDocument();
       const persisted = persistedProviderSettingsSnapshot(
@@ -2984,22 +3041,50 @@ export function AuthPanel({ view = "full" }: AuthPanelProps) {
       setBackgroundTasksDraft(persisted.backgroundTasks);
       setRecallEmbeddingsDraft(persisted.recallEmbeddings);
       setImageGenerationDraft(persisted.imageGeneration);
-      setExpandedProviderId(providerId);
+      setExpandedProviderId("openai_codex");
       setIsProviderDraftDirty(false);
       setProviderSaveStatus("saved");
       setAuthMessage(
-        "OpenAI Codex connected. Future access token refreshes are managed locally on this desktop.",
+        "OpenAI Codex connected. Tokens refresh automatically on this desktop.",
       );
     } catch (error) {
       setAuthError(
         error instanceof Error
           ? error.message
-          : "Failed to connect OpenAI Codex.",
+          : "Connected, but failed to reload runtime config.",
       );
       setAuthMessage("");
       setProviderSaveStatus("error");
-    } finally {
-      setConnectingProviderId(null);
+    }
+  }
+
+  function handleCodexOAuthModalChange(open: boolean) {
+    setCodexOAuthModalOpen(open);
+    if (!open) {
+      setConnectingProviderId((current) =>
+        current === "openai_codex" ? null : current,
+      );
+    }
+  }
+
+  async function handleRefreshCodexToken() {
+    if (!window.electronAPI) return;
+    setAuthError("");
+    setAuthMessage("Refreshing Codex token…");
+    try {
+      const result = await window.electronAPI.runtime.refreshCodexToken();
+      setAuthMessage(
+        result.refreshed
+          ? "Codex token refreshed."
+          : "Codex token is still valid — no refresh needed.",
+      );
+    } catch (error) {
+      setAuthError(
+        error instanceof Error
+          ? error.message
+          : "Failed to refresh Codex token.",
+      );
+      setAuthMessage("");
     }
   }
 
@@ -3207,18 +3292,47 @@ export function AuthPanel({ view = "full" }: AuthPanelProps) {
       );
     }
     if (providerId === "openai_codex") {
+      const codexMeta = codexConnectionMeta(
+        parseRuntimeConfigDocument(runtimeConfigDocument),
+      );
+      const isExpired =
+        codexMeta.expiresInMs !== null && codexMeta.expiresInMs <= 0;
+      const statusDotTone: "success" | "warning" | "destructive" = isExpired
+        ? "destructive"
+        : codexMeta.expiresInMs !== null && codexMeta.expiresInMs < 60_000
+          ? "warning"
+          : "success";
+      const statusDotClass =
+        statusDotTone === "success"
+          ? "bg-success"
+          : statusDotTone === "warning"
+            ? "bg-warning"
+            : "bg-destructive";
+      const expiryLabel =
+        codexMeta.expiresInMs === null
+          ? "Token status unknown"
+          : isExpired
+            ? "Token expired — refreshing on next request"
+            : `Expires in ${formatRelativeFuture(codexMeta.expiresInMs)} · auto-refreshes`;
+      const lastRefreshLabel = codexMeta.lastRefreshAtIso
+        ? `Last refreshed ${formatRelativePast(codexMeta.lastRefreshAtIso)}`
+        : null;
+
       return (
-        <div className="grid gap-2">
-          <div className="rounded-xl bg-card ring-1 ring-border px-3 py-2 text-sm text-muted-foreground">
-            Sign in with your ChatGPT account in the browser. holaOS keeps the
-            active Codex access token refreshed locally for this desktop.
-          </div>
-          <div className="rounded-xl bg-card ring-1 ring-border px-3 py-2">
-            <div className="text-xs uppercase text-muted-foreground">
-              Base URL
-            </div>
-            <div className="pt-1 font-mono text-sm text-foreground">
-              {template.defaultBaseUrl}
+        <div className="grid gap-3">
+          <div className="flex items-start gap-2.5 rounded-xl bg-card ring-1 ring-border px-3 py-2.5">
+            <span
+              className={`mt-1.5 size-1.5 shrink-0 rounded-full ${statusDotClass}`}
+              aria-hidden
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-foreground">
+                Connected via ChatGPT account
+              </div>
+              <div className="pt-0.5 text-xs text-muted-foreground">
+                {expiryLabel}
+                {lastRefreshLabel ? ` · ${lastRefreshLabel}` : null}
+              </div>
             </div>
           </div>
           {renderProviderModelSelection(providerId, draft)}
@@ -3227,7 +3341,7 @@ export function AuthPanel({ view = "full" }: AuthPanelProps) {
               variant="outline"
               size="sm"
               onClick={() => void handleSaveRuntimeSettings(providerId)}
-              disabled={isSavingRuntimeConfigDocument}
+              disabled={isSavingRuntimeConfigDocument || !isProviderDraftDirty}
             >
               {isSavingRuntimeConfigDocument ? "Saving..." : "Save"}
             </Button>
@@ -3235,35 +3349,51 @@ export function AuthPanel({ view = "full" }: AuthPanelProps) {
               variant="ghost"
               size="sm"
               onClick={() => handleCancelProviderEditing(providerId)}
-              disabled={isSavingRuntimeConfigDocument}
+              disabled={isSavingRuntimeConfigDocument || !isProviderDraftDirty}
             >
               Cancel
             </Button>
-            <div className="ml-auto flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void handleValidateProvider(providerId)}
-                disabled={drawerValidation.state === "validating"}
-              >
-                <Plug className="size-3.5" />
-                {drawerValidation.state === "validating"
-                  ? "Validating…"
-                  : "Validate"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() =>
-                  void handleDisconnectRuntimeProvider(providerId)
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto"
+                    aria-label="Connection actions"
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </Button>
                 }
-                disabled={isSavingRuntimeConfigDocument || isConnecting}
-              >
-                <Unplug className="size-3.5" />
-                {isDisconnecting ? "Disconnecting…" : "Disconnect"}
-              </Button>
-            </div>
+              />
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => void handleRefreshCodexToken()}
+                >
+                  <RefreshCw className="mr-2 size-3.5" />
+                  Refresh token now
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => void handleValidateProvider(providerId)}
+                  disabled={drawerValidation.state === "validating"}
+                >
+                  <Plug className="mr-2 size-3.5" />
+                  {drawerValidation.state === "validating"
+                    ? "Testing…"
+                    : "Test connection"}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() =>
+                    void handleDisconnectRuntimeProvider(providerId)
+                  }
+                  disabled={isSavingRuntimeConfigDocument || isConnecting}
+                >
+                  <Unplug className="mr-2 size-3.5" />
+                  {isDisconnecting ? "Disconnecting…" : "Disconnect"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       );
@@ -4019,6 +4149,11 @@ export function AuthPanel({ view = "full" }: AuthPanelProps) {
           </DialogPrimitive.Popup>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>
+      <CodexOAuthModal
+        open={codexOAuthModalOpen}
+        onOpenChange={handleCodexOAuthModalChange}
+        onSuccess={(config) => void handleCodexOAuthSuccess(config)}
+      />
     </div>
   );
 

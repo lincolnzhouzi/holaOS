@@ -1170,6 +1170,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("runtime:exchangeBinding", sandboxId) as Promise<RuntimeConfigPayload>,
     connectCodexOAuth: () =>
       ipcRenderer.invoke("runtime:connectCodexOAuth") as Promise<RuntimeConfigPayload>,
+    startCodexOAuth: () =>
+      ipcRenderer.invoke("runtime:startCodexOAuth") as Promise<{
+        userCode: string;
+        intervalSeconds: number;
+      }>,
+    awaitCodexOAuth: () =>
+      ipcRenderer.invoke("runtime:awaitCodexOAuth") as Promise<RuntimeConfigPayload>,
+    cancelCodexOAuth: () =>
+      ipcRenderer.invoke("runtime:cancelCodexOAuth") as Promise<void>,
+    refreshCodexToken: () =>
+      ipcRenderer.invoke("runtime:refreshCodexToken") as Promise<{
+        refreshed: boolean;
+        accessTokenExpiresAt: string | null;
+      }>,
     validateProvider: (providerId: string) =>
       ipcRenderer.invoke("runtime:validateProvider", providerId) as Promise<{
         ok: boolean;
