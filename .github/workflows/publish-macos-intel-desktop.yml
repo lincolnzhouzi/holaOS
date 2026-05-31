@@ -326,6 +326,7 @@ jobs:
             --mac dmg \
             --x64 \
             --config.mac.notarize=false
+          find out/release -maxdepth 1 \( -name '*.zip' -o -name '*.blockmap' -o -name '*-mac.yml' \) -delete
 
       - name: Validate Intel macOS release artifact
         shell: bash

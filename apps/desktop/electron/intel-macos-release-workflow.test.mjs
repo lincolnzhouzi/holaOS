@@ -47,6 +47,7 @@ test("intel macOS desktop workflow publishes a notarized x64 DMG without mac upd
   assert.match(workflowSource, /--mac dir \\\n\s+--x64 \\/);
   assert.match(workflowSource, /Intel mac release must not embed app-update\.yml because mac updater manifests remain arm64-only/);
   assert.match(workflowSource, /--prepackaged "\$\{app_path\}" \\\n\s+--mac dmg \\\n\s+--x64 \\/);
+  assert.match(workflowSource, /find out\/release -maxdepth 1 \\\( -name '\*\.zip' -o -name '\*\.blockmap' -o -name '\*-mac\.yml' \\\) -delete/);
   assert.match(workflowSource, /Intel macOS release artifacts must not emit zip, blockmap, or \*-mac\.yml updater files/);
   assert.match(workflowSource, /name: \$\{\{ env\.DESKTOP_ASSET_PREFIX \}\}-\$\{\{ inputs\.release_tag \}\}/);
   assert.match(workflowSource, /path: apps\/desktop\/out\/release\/\$\{\{ env\.DESKTOP_RELEASE_ASSET_NAME \}\}/);
