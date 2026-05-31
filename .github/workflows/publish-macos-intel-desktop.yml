@@ -211,6 +211,7 @@ jobs:
         shell: bash
         env:
           HOLABOSS_RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
+          HOLABOSS_ENABLE_APP_UPDATES: "0"
           HOLABOSS_WRITE_APP_UPDATE_CONFIG: "0"
           CSC_LINK: ${{ env.MAC_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ env.MAC_CERTIFICATE_PASSWORD }}
@@ -308,6 +309,7 @@ jobs:
         shell: bash
         env:
           HOLABOSS_RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
+          HOLABOSS_ENABLE_APP_UPDATES: "0"
           HOLABOSS_WRITE_APP_UPDATE_CONFIG: "0"
         run: |
           set -euo pipefail

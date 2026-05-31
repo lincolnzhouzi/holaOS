@@ -42,6 +42,8 @@ test("intel macOS desktop workflow publishes a notarized x64 DMG without mac upd
   assert.match(workflowSource, /bash runtime\/deploy\/package_macos_runtime\.sh out\/runtime-macos/);
   assert.match(workflowSource, /HOLABOSS_ENABLE_APP_UPDATES: "0"/);
   assert.match(workflowSource, /HOLABOSS_WRITE_APP_UPDATE_CONFIG: "0"/);
+  assert.match(workflowSource, /Build signed Intel macOS app bundle[\s\S]*HOLABOSS_ENABLE_APP_UPDATES: "0"[\s\S]*HOLABOSS_WRITE_APP_UPDATE_CONFIG: "0"/);
+  assert.match(workflowSource, /Build Intel macOS desktop release artifact[\s\S]*HOLABOSS_ENABLE_APP_UPDATES: "0"[\s\S]*HOLABOSS_WRITE_APP_UPDATE_CONFIG: "0"/);
   assert.match(workflowSource, /--mac dir \\\n\s+--x64 \\/);
   assert.match(workflowSource, /Intel mac release must not embed app-update\.yml because mac updater manifests remain arm64-only/);
   assert.match(workflowSource, /--prepackaged "\$\{app_path\}" \\\n\s+--mac dmg \\\n\s+--x64 \\/);
@@ -68,6 +70,12 @@ test("intel macOS desktop workflow publishes a notarized x64 DMG without mac upd
   assert.doesNotMatch(uploadReleaseStep, /-mac\.yml/);
 
   assert.match(builderConfigSource, /const configuredAppUpdateConfigBehavior = \(/);
+  assert.match(builderConfigSource, /const configuredAppUpdatesEnabled = readEnv\("HOLABOSS_ENABLE_APP_UPDATES"\)\.toLowerCase\(\);/);
+  assert.match(builderConfigSource, /function shouldEnableAppUpdates\(\) \{/);
+  assert.match(builderConfigSource, /if \(\["0", "false", "no", "off"\]\.includes\(configuredAppUpdatesEnabled\)\) \{\s*return false;\s*\}/);
+  assert.match(builderConfigSource, /return true;\s*\}/);
+  assert.match(builderConfigSource, /\.\.\.\(appUpdatesEnabled \? \{ generateUpdatesFilesForAllChannels: true \} : \{\}\),/);
+  assert.match(builderConfigSource, /\.\.\.\(appUpdatesEnabled\s*\?\s*\{\s*publish: \[/);
   assert.match(builderConfigSource, /process\.env\.HOLABOSS_WRITE_APP_UPDATE_CONFIG \|\| ""/);
   assert.match(builderConfigSource, /if \(!writeAppUpdateConfigEnabled\) \{\s*return;\s*\}/);
 });
